@@ -1,0 +1,13 @@
+
+# Environment variables and passwords
+.env
+**/.env
+
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
+# Debug logs
+*.log
+npm-debug.log*
+
