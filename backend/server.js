@@ -57,7 +57,7 @@ db.connect((err) => {
 // Serve existing restaurant website
 app.use(
     express.static(
-        path.join(__dirname, "..", "Swagatam_Restaurant_Website")
+       path.join(__dirname, "Swagatam_Restaurant_Website")
     )
 );
 
