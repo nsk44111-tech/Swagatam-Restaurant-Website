@@ -2,30 +2,13 @@
 const express = require("express");
 const path = require("path");
 const mysql = require("mysql2");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-
-// Configure Gmail transporter using Nodemailer
-const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
-
-// Verify Gmail connection
-transporter.verify((error, success) => {
-    if (error) {
-        console.error("Email configuration error:", error.message);
-    } else {
-        console.log("Gmail email service is ready!");
-    }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Middleware
 app.use(express.json());
@@ -42,7 +25,7 @@ const db = mysql.createConnection({
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-   port: Number(process.env.DB_PORT || 3306)
+    port: Number(process.env.DB_PORT || 3306)
 });
 
 db.connect((err) => {
@@ -57,7 +40,7 @@ db.connect((err) => {
 // Serve existing restaurant website
 app.use(
     express.static(
-       path.join(__dirname, "Swagatam_Restaurant_Website")
+        path.join(__dirname, "..", "Swagatam_Restaurant_Website")
     )
 );
 
@@ -102,6 +85,7 @@ app.get("/api/menu", (req, res) => {
         res.json(results);
     });
 });
+
 // CREATE - Add a new menu item
 app.post("/api/menu", (req, res) => {
     const {
@@ -155,6 +139,7 @@ app.post("/api/menu", (req, res) => {
         });
     });
 });
+
 // UPDATE - Edit an existing menu item
 app.put("/api/menu/:id", (req, res) => {
     const id = Number(req.params.id);
@@ -222,6 +207,7 @@ app.put("/api/menu/:id", (req, res) => {
         });
     });
 });
+
 // DELETE - Remove a menu item
 app.delete("/api/menu/:id", (req, res) => {
     const id = Number(req.params.id);
@@ -255,8 +241,7 @@ app.delete("/api/menu/:id", (req, res) => {
     });
 });
 
-
-// Contact form API with MySQL storage and email notification
+// Contact form API with MySQL storage and Resend email notification
 app.post("/api/contact", (req, res) => {
 
     const { name, email, subject, message } = req.body || {};
@@ -318,13 +303,14 @@ app.post("/api/contact", (req, res) => {
         console.log("Contact details saved in MySQL!");
         console.log("Inserted ID:", result.insertId);
 
-        // Prepare email notification
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: process.env.EMAIL_USER,
-            replyTo: cleanEmail,
-            subject: `New Contact Message: ${cleanSubject}`,
-            text: `
+        // Send email notification using Resend
+        try {
+            const { data, error } = await resend.emails.send({
+                from: "Swagatam Restaurant <onboarding@resend.dev>",
+                to: [process.env.EMAIL_USER],
+                replyTo: cleanEmail,
+                subject: `New Contact Message: ${cleanSubject}`,
+                text: `
 New message received through Swagatam Restaurant website.
 
 Name: ${cleanName}
@@ -333,21 +319,25 @@ Subject: ${cleanSubject}
 
 Message:
 ${cleanMessage}
-            `
-        };
+                `
+            });
 
-        // Send email notification
-        try {
-            await transporter.sendMail(mailOptions);
+            if (error) {
+                console.error("Resend email error:", error);
+
+                return res.status(201).json({
+                    message: "Your message was saved successfully, but email notification could not be sent."
+                });
+            }
 
             console.log("Email notification sent successfully!");
+            console.log("Resend email ID:", data?.id);
 
             return res.status(201).json({
                 message: "Your message has been received successfully!"
             });
 
         } catch (emailError) {
-
             console.error("Email sending failed:", emailError.message);
 
             return res.status(201).json({
@@ -356,7 +346,6 @@ ${cleanMessage}
         }
     });
 });
-
 
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
