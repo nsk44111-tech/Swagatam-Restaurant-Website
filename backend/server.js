@@ -3,12 +3,20 @@ const express = require("express");
 const path = require("path");
 const mysql = require("mysql2");
 const { Resend } = require("resend");
+
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Frontend folder
+const frontendPath = path.join(
+    __dirname,
+    "..",
+    "Swagatam_Restaurant_Website"
+);
 
 // Middleware
 app.use(express.json());
@@ -37,12 +45,21 @@ db.connect((err) => {
     console.log("Connected to Swagatam MySQL database!");
 });
 
-// Serve existing restaurant website
-app.use(
-    express.static(
-        path.join(__dirname, "..", "Swagatam_Restaurant_Website")
-    )
-);
+// Serve frontend static files
+app.use(express.static(frontendPath));
+
+// Homepage route
+app.get("/", (req, res) => {
+    res.sendFile(path.join(frontendPath, "index.html"), (err) => {
+        if (err) {
+            console.error("Homepage serving error:", err.message);
+
+            if (!res.headersSent) {
+                res.status(500).send("Unable to load Swagatam website.");
+            }
+        }
+    });
+});
 
 // Test backend API
 app.get("/api/test", (req, res) => {
@@ -51,14 +68,17 @@ app.get("/api/test", (req, res) => {
     });
 });
 
-// Test database connection
+// Database check route
 app.get("/api/check-route", (req, res) => {
     res.send("Database test route section is reachable!");
 });
 
+// Test database connection
 app.get("/api/db-test", (req, res) => {
     db.query("SELECT 1 AS result", (err, results) => {
         if (err) {
+            console.error("Database test error:", err.message);
+
             return res.status(500).json({
                 error: "Database query failed"
             });
@@ -241,12 +261,11 @@ app.delete("/api/menu/:id", (req, res) => {
     });
 });
 
-// Contact form API with MySQL storage and Resend email notification
+// CONTACT FORM - Save in MySQL and send notification through Resend
 app.post("/api/contact", (req, res) => {
-
     const { name, email, subject, message } = req.body || {};
 
-    // Validate input fields
+    // Validate input types
     if (
         typeof name !== "string" ||
         typeof email !== "string" ||
@@ -263,12 +282,14 @@ app.post("/api/contact", (req, res) => {
     const cleanSubject = subject.trim();
     const cleanMessage = message.trim();
 
+    // Validate empty fields
     if (!cleanName || !cleanEmail || !cleanSubject || !cleanMessage) {
         return res.status(400).json({
             message: "Please fill in all fields."
         });
     }
 
+    // Validate email format
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailPattern.test(cleanEmail)) {
@@ -291,7 +312,6 @@ app.post("/api/contact", (req, res) => {
     ];
 
     db.query(sql, values, async (err, result) => {
-
         if (err) {
             console.error("Error saving contact:", err.message);
 
@@ -303,7 +323,7 @@ app.post("/api/contact", (req, res) => {
         console.log("Contact details saved in MySQL!");
         console.log("Inserted ID:", result.insertId);
 
-        // Send email notification using Resend
+        // Send notification using Resend
         try {
             const { data, error } = await resend.emails.send({
                 from: "Swagatam Restaurant <onboarding@resend.dev>",
